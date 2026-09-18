@@ -1,0 +1,822 @@
+using System;
+using System.Collections.Specialized;
+using System.Data;
+using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Text.RegularExpressions;
+using System.Xml;
+using Iskraemeco.Core;
+using Iskraemeco.Core.Utils;
+using Iskraemeco.Database;
+using Microsoft.SqlServer.Management.Common;
+using Microsoft.SqlServer.Management.Smo;
+using DeviceType = Microsoft.SqlServer.Management.Smo.DeviceType;
+using Microsoft.Win32;
+using Microsoft.Data.SqlClient;
+
+namespace Iskraemeco.MeterView.DatabaseManager
+{
+    public static class DbUpgrade
+    {
+        private static SystemAction _action;
+        private const string Sep2MeterViewDalDatasourceName = @"MeterConfigurator";
+        private static bool? _sep2MeterViewDbExists = null;
+        private const string DatabaseNotProperlyConfiguredStateIsNotActive = @"Database not properly configured (State is not active).";
+
+        public static bool CopyDatabase(IDbUpgrade session, string setupTempFolderPath, Action showUpgradeStatus = null)
+        {
+            InitializeDal();
+            if (CopyCurrentDatabase(session, setupTempFolderPath, showUpgradeStatus)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_26_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_25_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_24_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_23_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_22_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_21_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_20_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_19_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_18_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_17_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_16_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_13_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_12_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_11_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_9_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_5_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_4_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_1_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Symbiot3_0_CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2021CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2020R3CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2020R2CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2020CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2019R2CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2019CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2018CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2017R2CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2017CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2016CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2015R2CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2015CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2014R3CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2014R2CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2014CommonApplicationDataFolder)) { }
+            else if (CopySpecificDatabase(session, setupTempFolderPath, showUpgradeStatus, SetupData.Sep2MeterView2013CommonApplicationDataFolder)) { }
+            else if (CopySqlServer2008Database(session, setupTempFolderPath, showUpgradeStatus)) { }
+            else
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public static void ExecuteCurrentDbUpgradesIfNecessary()
+        {
+            InitializeDal(); // Initialize again to refresh database State
+            using (var conn = DalAccess.Connect(Action, Sep2MeterViewDalDatasourceName))
+            {
+                if (conn.State == DatabaseState.NotUpgraded || conn.State == DatabaseState.ProceduresNotUpgraded)
+                    conn.UpgradeDatabase(Action);
+            }
+        }
+
+        public static void InitializeDal()
+        {
+            DalAccess.Initialize(Action, new MeterConfiguratorDbConnectionProviderFactory());
+
+            DalAccess.AddDataSource(Action, Sep2MeterViewDalDatasourceName, SetupData.Sep2MeterViewCurrentConnectionString);
+        }
+
+        public static bool IsCurrentDbStateActive()
+        {
+            DbUpgrade.InitializeDal(); // Initialize again to refresh database State
+            using (var conn = DalAccess.Connect(DbUpgrade.Action, Sep2MeterViewDalDatasourceName))
+            {
+                return conn.State == DatabaseState.Active;
+            }
+        }
+
+        /// <summary>
+        /// Turns off AuditLog. This function must be called last, after all upgrades.
+        /// </summary>
+        public static void TurnOffAuditLogOnCurrentDb()
+        {
+            RunSqlString(@"exec dbo.aud_setlevel_off");
+        }
+
+        /// <summary>
+        /// Adds AccessRule to directory and all its children for given user and given fileSystemRight.
+        /// </summary>
+        /// <param name="directory">Directory for which AccessRule is added.</param>
+        /// <param name="identity">User</param>
+        /// <param name="fileSystemRight">File system right</param>
+        public static void AddAccessRuleToDirectory(string directory, string identity, FileSystemRights fileSystemRight, IDbUpgrade session)
+        {
+            session.Log(string.Format(@"Adding access rule to directory '{0}' for user '{1}' with file system right '{2}'...", directory, identity, fileSystemRight));
+            FileSystemUtils.AddAccessRuleToDirectory(directory, identity, fileSystemRight);
+            session.Log(@"Access rule added.");
+        }
+
+        private static bool CopyCurrentDatabase(IDbUpgrade session, string setupTempFolderPath, Action showUpgradeStatus)
+        {
+            if (Directory.Exists(SetupData.Sep2MeterViewCurrentCommonApplicationDataFolder))
+            {
+                // This Release version of current SEP2 MeterView was already installed.
+                // Check if compatible database version already exists. 
+                // In this case, use it. 
+                // If not, copy latest version of database to new one and execute all 
+                // necessary patches on new database.
+                //
+                // Config file migration is not necessary. 
+
+                if (File.Exists(SetupData.Sep2MeterViewCurrentDbFilePath))
+                {
+                    session.Log(string.Format(@"Database {0} already exists. Symbiot MeterConfigurator will use it.", SetupData.Sep2MeterViewCurrentDbName));
+                    return true;
+                }
+
+                return DbUpgrade.CopyPreviousLocalDbToCurrentDb(session, SetupData.Sep2MeterViewCurrentDbFilePath, Path.Combine(setupTempFolderPath, @"MeterViewDbBackup.bak"), showUpgradeStatus);
+            }
+
+            return false;
+        }
+
+        private static bool CopySpecificDatabase(IDbUpgrade session, string setupTempFolderPath, Action showUpgradeStatus, string Sep2MeterViewCommonApplicationDataFolder)
+        {
+            if (Directory.Exists(Sep2MeterViewCommonApplicationDataFolder))
+            {
+                string applicationName = GetApplicationNameFromCommonApplicationDataFolder(Sep2MeterViewCommonApplicationDataFolder);
+
+                CopyConfigFileIfPossible(applicationName, session);
+
+                // Previous Release version of SEP2 MeterView was already installed.
+                // Check if previous database exists and copy it to new one and execute all 
+                // necessary patches on new database.
+
+                string prevDbFilePath = Path.Combine(Sep2MeterViewCommonApplicationDataFolder, string.Concat(SetupData.Sep2MeterViewCurrentDbName, @".mdf"));
+                return DbUpgrade.CopyPreviousLocalDbToCurrentDb(session, prevDbFilePath, Path.Combine(setupTempFolderPath, @"MeterViewDbBackup.bak"), showUpgradeStatus);
+            }
+
+            return false;
+        }
+
+        private static bool CopySqlServer2008Database(IDbUpgrade session, string setupTempFolderPath, Action showUpgradeStatus)
+        {
+            if (Sep2MeterViewDbExists)
+            {
+                showUpgradeStatus?.Invoke();
+                CopyConfigFileIfPossible(@"SEP2 MeterView", session);
+
+                // SQL Server 2008 Database from old SEP2 MeterView exists.
+                // Copy it to new one and execute all necessary patches on new database.
+
+                session.Log(string.Format(@"Copying previous database '{0}' from SQL Server 2008 to current LocalDB database '{1}'.",
+                    SetupData.Sep2MeterViewDbName, SetupData.Sep2MeterViewCurrentDbFilePath));
+
+                DbUpgrade.CopyPreviousDbToCurrentDb(SetupData.Sep2MeterViewDbServerInstance,SetupData.Sep2MeterViewDbName,null,true,null,
+                                            null,session,Path.Combine(setupTempFolderPath, @"MeterViewDbBackup.bak"));
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public static void CopyConfigFileIfPossible(string applicationName, IDbUpgrade session)
+        {
+            try
+            {
+                session.Log(@"Begin CustomAction CopyConfigFileIfPossible");
+
+                // If application name cannot be obtained, do nothing
+                if (string.IsNullOrEmpty(applicationName))
+                {
+                    session.Log(@"Error - application name could not be obtained");
+                    return;
+                }
+
+                // Get installation folder of previous version
+                // e.g.: C:\Program Files (x86)\Iskraemeco\SEP2W System\SEP2 MeterView 2017 R2\
+                var previousInstallationFolder = GetSEP2MeterViewInstallFolderFromRegistry(applicationName);
+                if (previousInstallationFolder == null)
+                {
+                    // In case of uninstalled previous version try to get default installation folder of previous version from application name
+                    previousInstallationFolder = GetDefaultSEP2MeterViewInstallFolder(applicationName);
+                    if (previousInstallationFolder == null)
+                    {
+                        session.Log(@"Error - installation folder of application could not be found");
+                        return;
+                    }
+                }
+
+                const string SEP2MeterViewConfigFileName = @"SEP2MeterView.exe.Config";
+                const string SymbiotMeterConfiguratorConfigFileName = @"Symbiot.MeterConfigurator.exe.Config";
+                bool previousInstallationWasSEP2MeterView = applicationName.Contains(@"SEP2 MeterView");
+                string previousInstallationConfigFileName = previousInstallationWasSEP2MeterView ? SEP2MeterViewConfigFileName : SymbiotMeterConfiguratorConfigFileName;
+
+                // If config file from previous installation doesn't exist, do nothing 
+                // e.g.: C:\Program Files (x86)\Iskraemeco\SEP2W System\SEP2 MeterView 2017 R2\SEP2MeterView.exe.Config
+                var previousInstallationConfigFilePath =
+                    Path.Combine(previousInstallationFolder.FullName, previousInstallationConfigFileName);
+                if (!File.Exists(previousInstallationConfigFilePath))
+                {
+                    session.Log(@"Error - config file from previous installation doesn't exist");
+                    return;
+                }
+
+                // Copy config file from previous installation to new installation 
+                var currentInstallationConfigFilePath = Path.Combine(session[@"INSTALLFOLDER"], SymbiotMeterConfiguratorConfigFileName);
+                if (!Directory.Exists(session[@"INSTALLFOLDER"]))
+                    Directory.CreateDirectory(session[@"INSTALLFOLDER"]);
+                File.Copy(previousInstallationConfigFilePath, currentInstallationConfigFilePath);
+
+                // Modify new config file
+                // Erase EventLog node
+                //FileStream currentInstallationConfigFile = File.Open(currentInstallationConfigFilePath, FileMode.Open);
+                XmlDocument configXmlDocument = new XmlDocument();
+                configXmlDocument.Load(currentInstallationConfigFilePath);
+                foreach (XmlNode node in configXmlDocument.SelectNodes("//addNode[@name='EventLog']"))
+                {
+                    node.ParentNode.RemoveChild(node);
+                }
+
+                // Rename nodes that refer to SEP2 elements to Symbiot elements
+
+                XmlAttribute masServiceUrlAttribute = (XmlAttribute)configXmlDocument.SelectSingleNode("//addNode[@name='SEP2MeterView']/keys/addKey[@key='MeterAccessServiceUrl']/@key");
+                if (masServiceUrlAttribute != null)
+                {
+                    masServiceUrlAttribute.Value = "MeterAccessUrl";
+                }
+
+                XmlAttribute sep2MeterViewAttribute = (XmlAttribute)configXmlDocument.SelectSingleNode("//addNode[@name='SEP2MeterView']/@name");
+                if (sep2MeterViewAttribute != null)
+                {
+                    sep2MeterViewAttribute.Value = "SymbiotMeterConfigurator";
+                }
+
+                XmlElement sep2wSettingsElement = (XmlElement)configXmlDocument.SelectSingleNode("//sep2wSettings");
+                if (sep2wSettingsElement != null)
+                {
+                    RenameXMLNode(configXmlDocument, sep2wSettingsElement, "symbiotSettings");
+                }
+
+                XmlAttribute sectionSep2wSettingsAttribute = (XmlAttribute)configXmlDocument.SelectSingleNode("//section[@name='sep2wSettings']/@name");
+                if (sectionSep2wSettingsAttribute != null)
+                {
+                    sectionSep2wSettingsAttribute.Value = "symbiotSettings";
+                }
+
+                configXmlDocument.Save(currentInstallationConfigFilePath);
+
+                session.Log(@"Config file from previous installation was successfully migrated to new installation");
+            }
+            catch (Exception e)
+            {
+                session.Log($@"Error - CustomAction CopyConfigFileIfPossible failed with error: {e.Message}");
+            }
+            finally
+            {
+                session.Log(@"End CustomAction CopyConfigFileIfPossible");
+            }
+        }
+
+        private static void RenameXMLNode(XmlDocument doc, XmlNode oldRoot, string newname)
+        {
+            XmlNode newRoot = doc.CreateElement(newname);
+
+            foreach (XmlNode childNode in oldRoot.ChildNodes)
+            {
+                newRoot.AppendChild(childNode.CloneNode(true));
+            }
+            XmlNode parent = oldRoot.ParentNode;
+            parent.InsertBefore(newRoot, oldRoot);
+            parent.RemoveChild(oldRoot);
+        }
+
+        private static DirectoryInfo GetDefaultSEP2MeterViewInstallFolder(string applicationName)
+        {
+            string properProgramFilesFolder = Environment.Is64BitOperatingSystem
+                ? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+                : Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string programFilesFolder = Path.Combine(
+                new string[] { properProgramFilesFolder, @"Iskraemeco", applicationName });
+
+            if (Directory.Exists(programFilesFolder))
+                return new DirectoryInfo(programFilesFolder);
+
+            programFilesFolder = Path.Combine(
+                new string[] { properProgramFilesFolder, @"Iskraemeco", @"SEP2W System", applicationName });
+
+            if (Directory.Exists(programFilesFolder))
+                return new DirectoryInfo(programFilesFolder);
+
+            return null;
+        }
+
+        private static DirectoryInfo GetSEP2MeterViewInstallFolderFromRegistry(string applicationName)
+        {
+            RegistryKey key;
+
+            // Note from MSDN:
+            // On the 64 - bit version of Windows, portions of the registry are stored separately for 32 - bit and 64 - bit applications.There is a 32 - bit view for 32 - bit applications and a 64 - bit view for 64 - bit applications.
+            // You can specify a registry view when you use the OpenBaseKey and OpenRemoteBaseKey(RegistryHive, String, RegistryView) methods, and the FromHandle property on a RegistryKey object.
+            // If you request a 64 - bit view on a 32 - bit operating system, the returned keys will be in the 32 - bit view.
+
+            RegistryKey localMachineKey = RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, RegistryView.Registry64);
+            key = localMachineKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\Folders");
+            foreach (string valueName in key.GetValueNames())
+            {
+                var folderPath = new DirectoryInfo(valueName);
+                // e.g.: "SEP2 MeterView 2017 R2"
+                var folderName = folderPath.Name;
+
+                if (applicationName.Equals(folderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return folderPath;
+                }
+            }
+
+            return null;
+        }
+
+        private static string GetApplicationNameFromCommonApplicationDataFolder(string sep2MeterViewXyzCommonApplicationDataFolder)
+        {
+            try
+            {
+                var commonApplicationDataFolderPath = new DirectoryInfo(sep2MeterViewXyzCommonApplicationDataFolder);
+
+                var commonApplicationFolder = commonApplicationDataFolderPath.Parent;
+
+                // e.g.: "SEP2 MeterView 2017 R2"
+                return commonApplicationFolder.Name;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static SystemAction Action
+        {
+            get
+            {
+                if (_action == null)
+                {
+                    var winIdent = WindowsIdentity.GetCurrent();
+                    string userName = winIdent != null ? winIdent.Name : @"User Name";
+                    _action = new SystemAction(null, userName);
+                }
+
+                return _action;
+            }
+        }
+
+        /// <summary>
+        /// Checks if SEP2 MeterView database (SQL Server 2008 version) exists.
+        /// </summary>
+        private static bool Sep2MeterViewDbExists
+        {
+            get
+            {
+                if (!_sep2MeterViewDbExists.HasValue)
+                {
+                    try
+                    {
+                        var conn = new ServerConnection
+                        {
+                            ServerInstance = SetupData.Sep2MeterViewDbServerInstance,
+                            LoginSecure = true
+                        };
+
+                        // Connect to a instance of SQL Server.
+                        var srv = new Server(conn);
+
+                        // The actual connection is made when a property is retrieved.
+                        _sep2MeterViewDbExists = srv.Databases.Contains(SetupData.Sep2MeterViewDbName);
+                        // The connection is automatically disconnected when the Server variable goes out of scope.
+                    }
+                    catch (Exception)
+                    {
+                        _sep2MeterViewDbExists = false;
+                    }
+                }
+
+                return _sep2MeterViewDbExists.Value;
+            }
+        }
+
+        private static bool CopyPreviousLocalDbToCurrentDb(IDbUpgrade session, string prevDbFilePath, string backupFilePath, Action showUpgradeStatus)
+        {
+            if (!string.IsNullOrEmpty(GetLatestPreviousDbFilePath(prevDbFilePath)))
+            {
+                showUpgradeStatus?.Invoke();
+                // Previous version of Database exists. 
+                // Copy it to new one and execute all necessary patches on new database.
+                string latestPreviousDbFilePath = GetLatestPreviousDbFilePath(prevDbFilePath);
+                string latestPreviousDbName = Path.GetFileNameWithoutExtension(latestPreviousDbFilePath);
+
+                session.Log(string.Format(@"Copying previous LocalDB database '{0}' to current LocalDB database '{1}'.",
+                    latestPreviousDbFilePath, SetupData.Sep2MeterViewCurrentDbFilePath));
+
+                // To create a database backup:
+                // for database versions lower than 3.19.3.2, use LocalDB 2012,
+                // for database versions equal to 3.19.3.2, use LocalDB 2012 or LocalDB 2019 (default instance MSSQLLocalDB) 
+                // for database versions larger than 3.19.3.2 and lower than 3.20.0.0 use LocalDB 2019 (default instance MSSQLLocalDB)
+                // for database versions equal to 3.20.0.0 use LocalDB 2019 (default instance MSSQLLocalDB) or LocalDB 2019 (named instance MSSQLLocalDB2019SmcInstance) 
+                // for newer versions use LocalDB 2019 (named instance MSSQLLocalDB2019SmcInstance).
+                string previousServerInstance;
+
+                if (CompareDatabaseVersions(latestPreviousDbName, @"MeterConfigurator_3_19_3_2.mdf") < 0)
+                    previousServerInstance = SetupData.Sep2MeterViewLocalDb2012ServerInstance;
+                else if (CompareDatabaseVersions(latestPreviousDbName, @"MeterConfigurator_3_19_3_2.mdf") == 0)
+                {
+                    previousServerInstance = IsDatabaseAttachedToSqlServerLocalDbInstance(
+                                                 latestPreviousDbName, SetupData.Sep2MeterViewLocalDb2019ServerInstance)
+                                                 ? SetupData.Sep2MeterViewLocalDb2019ServerInstance
+                                                 : SetupData.Sep2MeterViewLocalDb2012ServerInstance;
+                }
+                else if (CompareDatabaseVersions(latestPreviousDbName, @"MeterConfigurator_3_19_3_2.mdf") > 0 &&
+                         CompareDatabaseVersions(latestPreviousDbName, @"MeterConfigurator_3_20_0_0.mdf") < 0)
+                {
+                    previousServerInstance = SetupData.Sep2MeterViewLocalDb2019ServerInstance;
+                }
+                else if (CompareDatabaseVersions(latestPreviousDbName, @"MeterConfigurator_3_20_0_0.mdf") == 0)
+                {
+                    previousServerInstance = IsDatabaseAttachedToSqlServerLocalDbInstance(
+                                                 latestPreviousDbName, SetupData.Sep2MeterViewCurrentDbServerInstance)
+                                                 ? SetupData.Sep2MeterViewCurrentDbServerInstance
+                                                 : SetupData.Sep2MeterViewLocalDb2019ServerInstance;
+                }
+                else
+                    previousServerInstance = SetupData.Sep2MeterViewCurrentDbServerInstance;
+
+                CopyPreviousDbToCurrentDb(
+                    previousServerInstance, latestPreviousDbName, Path.GetDirectoryName(latestPreviousDbFilePath), true,
+                    null, null, session, backupFilePath);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsDatabaseAttachedToSqlServerLocalDbInstance(string databaseName, string sqlServerLocalDbInstance)
+        {
+            var connection = new ServerConnection(sqlServerLocalDbInstance);
+            connection.LoginSecure = true; // Windows Authentication
+
+            var sqlServer = new Server(connection);
+            return sqlServer.Databases != null && sqlServer.Databases.Contains(databaseName);
+        }
+
+        /// <summary>
+        /// Copies previous database to current database, then executes upgrades and turns off Audit Log on current database.
+        /// </summary>
+        private static void CopyPreviousDbToCurrentDb(string previousServerInstance, string previousDatabaseName, string previousDbFolderPath,
+            bool previousUseWindowsAuthentication, string previousUserName, string previousPassword, IDbUpgrade session, string backupFilePath)
+        {
+            CopyDatabase(previousServerInstance, previousDatabaseName, previousDbFolderPath, previousUseWindowsAuthentication, previousUserName, previousPassword,
+                SetupData.Sep2MeterViewCurrentDbServerInstance, SetupData.Sep2MeterViewCurrentDbName, SetupData.Sep2MeterViewCurrentCommonApplicationDataFolder,
+                SetupData.Sep2MeterViewCurrentCommonApplicationDataFolder,
+                true, null, null, backupFilePath, session);
+
+            ExecuteCurrentDbUpgradesIfNecessary();
+            TurnOffAuditLogOnCurrentDb();
+            if (!IsCurrentDbStateActive())
+                throw new Exception(DatabaseNotProperlyConfiguredStateIsNotActive);
+        }
+
+        private static void RunSqlString(string sqlString)
+        {
+            string connectionString = GetCurrentConnectionStringWithoutProvider();
+
+            // split SQL script on GO command
+            System.Collections.Generic.IEnumerable<string> commandStrings = Regex.Split(sqlString, @"^\s*GO\s*$",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+                foreach (string commandString in commandStrings)
+                {
+                    if (commandString.Trim() != string.Empty)
+                    {
+                        using (var command = new SqlCommand(commandString, connection))
+                        {
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+        }
+
+        private static string GetCurrentConnectionStringWithoutProvider()
+        {
+            string connectionString = string.Empty;
+            string[] connectionStringArr = SetupData.Sep2MeterViewCurrentConnectionString.Split(';');
+            foreach (var s in connectionStringArr)
+            {
+                if (!s.Contains(@"Provider=")) connectionString += s + @";";
+            }
+
+            return connectionString;
+        }
+
+        /// <summary>
+        /// Computes database versions.
+        /// </summary>
+        /// <param name="dbFilePathA"></param>
+        /// <param name="dbFilePathB"></param>
+        /// <returns>Returns 0 if database versions are the same, negative value if dbFilePathA is smaller than dbFilePathB
+        /// and positive value if dbFilePathA is greater than dbFilePathB.
+        /// </returns>
+        private static int CompareDatabaseVersions(string dbFilePathA, string dbFilePathB)
+        {
+            if (string.IsNullOrEmpty(dbFilePathA))
+            {
+                if (string.IsNullOrEmpty(dbFilePathB))
+                    return 0;
+
+                return -1;
+            }
+
+            if (string.IsNullOrEmpty(dbFilePathB))
+                return 1;
+
+            string[] versionA = GetDbVersionFromFilePath(dbFilePathA);
+            string[] versionB = GetDbVersionFromFilePath(dbFilePathB);
+
+            if (versionA.Length != versionB.Length)
+                throw new InvalidOperationException(string.Format(@"Version lengths do not match! Version A length: {0}, Version B length: {1}.", versionA.Length, versionB.Length));
+
+            for (int i = 0; i < versionA.Length; ++i)
+            {
+                int verA = Convert.ToInt32(versionA[i]);
+                int verB = Convert.ToInt32(versionB[i]);
+
+                if (verA < verB)
+                    return -1;
+                if (verA > verB)
+                    return 1;
+            }
+
+            return 0;
+        }
+
+        private static string[] GetDbVersionFromFilePath(string filePath)
+        {
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+            string version = fileName.Remove(0, fileName.IndexOf('_') + 1);
+            return version.Split(new char[] { '_' });
+        }
+
+        private static string GetLatestPreviousDbFilePath(string dbFilePath)
+        {
+            string dbDir = Path.GetDirectoryName(dbFilePath);
+            if (dbDir == null || !Directory.Exists(dbDir))
+                return string.Empty;
+
+            string latestPreviousDbFilePath = string.Empty;
+            foreach (string filePath in Directory.GetFiles(dbDir))
+            {
+                if (filePath == null || (!Regex.IsMatch(Path.GetFileName(filePath), @"^MeterView(_\d+){4}\.mdf$") &&
+                                         !Regex.IsMatch(Path.GetFileName(filePath), @"^MeterConfigurator(_\d+){4}\.mdf$")))
+                    continue;
+
+                if (CompareDatabaseVersions(filePath, dbFilePath) <= 0 &&
+                    CompareDatabaseVersions(filePath, latestPreviousDbFilePath) > 0)
+                {
+                    latestPreviousDbFilePath = filePath;
+                }
+            }
+
+            return latestPreviousDbFilePath;
+        }
+
+        /// <summary>
+        /// Masks sensitive information from SQL Server exceptions
+        /// </summary>
+        /// Added to prevent SQL credentials or connection string details from being written
+        /// to MSI installer logs through exception messages.
+        private static string MaskSensitiveException(Exception ex)
+        {
+            if (ex == null)
+                return "Unknown error";
+
+            string message = ex.Message;
+
+            // Mask common credential patterns in error messages
+            // Pattern: "Login failed for user '<username>'"
+            message = System.Text.RegularExpressions.Regex.Replace(message,
+                @"Login failed for user '([^']+)'",
+                "Login failed for user '****'",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Pattern: "Server=something;User ID=sa;Password=something"
+            message = System.Text.RegularExpressions.Regex.Replace(message,
+                @"Password=[^\s;]+",
+                "Password=****",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Pattern: connection string in square brackets
+            message = System.Text.RegularExpressions.Regex.Replace(message,
+                @"\[\w+://[^\]]*\]",
+                "[****connection string masked****]");
+
+            return message.Length > 0 ? message : "Database operation failed";
+        }
+
+
+        private static void CopyDatabase(string sourceServerInstance, string sourceDatabaseName, string sourceDatabaseFolderPath,
+            bool sourceUseWindowsAuthentication, string sourceUserName, string sourcePassword, string destinationServerInstance,
+            string destinationDatabaseName, string destinationDataFilePath, string destinationLogFilePath, bool destinationUseWindowsAuthentication,
+            string destinationUserName, string destinationPassword, string backupFilePath, IDbUpgrade session)
+        {
+            // Do backup to file and restore from file to copy old DB to new DB
+
+            BackupDatabase(sourceServerInstance, sourceDatabaseName, sourceDatabaseFolderPath, backupFilePath,
+                sourceUseWindowsAuthentication, session, sourceUserName, sourcePassword);
+            RestoreDatabase(destinationServerInstance, destinationDatabaseName, backupFilePath, destinationDataFilePath, destinationLogFilePath,
+                destinationUseWindowsAuthentication, session, destinationUserName, destinationPassword);
+        }
+
+        private static void BackupDatabase(string serverInstance, string databaseName, string databaseFolderPath, string backupFilePath,
+            bool useWindowsAuthentication, IDbUpgrade session, string userName = null, String password = null)
+        {
+            var sqlBackup = new Backup
+            {
+                Action = BackupActionType.Database,
+                BackupSetDescription = string.Format(@"Full backup of database '{0}'", databaseName),
+                BackupSetName = @"MeterViewDbBackup",
+                Database = databaseName
+            };
+
+            string backupFileDir = Path.GetDirectoryName(backupFilePath);
+            if (!Directory.Exists(backupFileDir))
+                Directory.CreateDirectory(backupFileDir);
+
+            // Make sure the service account (Network Service) has write permissions on folder where backup file will reside.
+            // Convert the 'Network Service' SID: S-1-5-20 to a domain\name   
+            string account = new SecurityIdentifier(@"S-1-5-20").Translate(typeof(NTAccount)).ToString();
+            AddAccessRuleToDirectory(backupFileDir, account, FileSystemRights.FullControl, session);
+
+            // Make sure all users have write permissions on folder where backup file will reside.
+            // Convert the 'Users' SID: S-1-5-32-545 to a domain\name
+            account = new SecurityIdentifier(@"S-1-5-32-545").Translate(typeof(NTAccount)).ToString();
+            AddAccessRuleToDirectory(backupFileDir, account, FileSystemRights.FullControl, session);
+
+            var deviceItem = new BackupDeviceItem(backupFilePath, DeviceType.File);
+            var connection = new ServerConnection(serverInstance);
+            if (useWindowsAuthentication)
+                connection.LoginSecure = true; // Windows Authentication
+            else
+            {
+                connection.LoginSecure = false; // SQL Server Authentication
+                connection.Login = userName;
+                connection.Password = password;
+            }
+
+            var sqlServer = new Server(connection);
+            // If backup of LocalDB is in place and if database is not already attached, attach database to localDB instance.
+            if (!string.IsNullOrEmpty(databaseFolderPath) && !sqlServer.Databases.Contains(databaseName))
+            {
+                var dbFiles = new StringCollection
+                {
+                    Path.Combine(databaseFolderPath, databaseName + @".mdf"),
+                    Path.Combine(databaseFolderPath, databaseName + @"_log.ldf")
+                };
+
+                sqlServer.AttachDatabase(databaseName, dbFiles);
+            }
+
+            sqlBackup.Initialize = true;
+            sqlBackup.Checksum = true;
+            sqlBackup.ContinueAfterError = true;
+
+            sqlBackup.Devices.Add(deviceItem);
+            //Set the Incremental property to false to specify that this is a full database backup.
+            sqlBackup.Incremental = false;
+            //Set the expiration date. 
+            //sqlBackup.ExpirationDate = DateTime.Now.AddDays(3);
+            //Specify that the log must be truncated after the backup is complete.
+            sqlBackup.LogTruncation = BackupTruncateLogType.Truncate;
+
+            //sqlBackup.FormatMedia = false;
+            //Run SqlBackup to perform the full database backup on the instance of SQL Server. 
+            sqlBackup.SqlBackup(sqlServer);
+        }
+
+        private static void RestoreDatabase(string serverInstance, string databaseName, string backupFilePath, String dataFilePath, String logFilePath,
+                                    bool useWindowsAuthentication, IDbUpgrade session, string userName = null, String password = null)
+        {
+            var sqlRestore = new Restore();
+
+            var deviceItem = new BackupDeviceItem(backupFilePath, DeviceType.File);
+            sqlRestore.Devices.Add(deviceItem);
+            //Specify the database name.
+            sqlRestore.Database = databaseName;
+
+            ServerConnection connection = new ServerConnection(serverInstance);
+            if (useWindowsAuthentication)
+                connection.LoginSecure = true; // Windows Authentication
+            else
+            {
+                connection.LoginSecure = false; // SQL Server Authentication
+                connection.Login = userName;
+                connection.Password = password;
+            }
+
+            Server sqlServer = new Server(connection);
+
+            if (sqlServer.Databases.Contains(databaseName))
+            {
+                session.Log(string.Format(@"Restore database '{0}' already exists, which means that user deleted database files, but didn't delete database itself from localDB instance of SQL Server, so it is deleted here.", databaseName));
+                try
+                {
+                    sqlServer.Databases[databaseName].Drop();
+                }
+                catch
+                {
+                    // Drop throws exception, but works correctly
+                }
+            }
+
+            //var db = sqlServer.Databases[databaseName];
+            sqlRestore.Action = RestoreActionType.Database;
+            sqlRestore.NoRecovery = false;
+            String dataFileLocation = Path.Combine(dataFilePath, databaseName + @".mdf");
+            String partitionFileLocation = Path.Combine(logFilePath, databaseName + @"_PartitionFG.ndf");
+            String logFileLocation = Path.Combine(logFilePath, databaseName + @"_log.ldf");
+
+            DataTable fileList = sqlRestore.ReadFileList(sqlServer);
+
+            String dataFileName = null;
+            String partitionFileName = null;
+            String logFileName = null;
+
+            for (int i = 0; i < fileList.Rows.Count; i++)
+            {
+                String value = (fileList.Rows[i][0] as string);
+
+                if (!String.IsNullOrEmpty(value) && (value).EndsWith("_log"))
+                {
+                    logFileName = value;
+                    continue;
+                }
+
+                if (!String.IsNullOrEmpty(value) && (value).EndsWith("_PartitionFG"))
+                {
+                    partitionFileName = value;
+                    continue;
+                }
+
+                if (!String.IsNullOrEmpty(value))
+                {
+                    dataFileName = value;
+                }
+            }
+
+            if (!String.IsNullOrEmpty(dataFileName))
+                sqlRestore.RelocateFiles.Add(new RelocateFile(dataFileName, dataFileLocation));
+            else
+            {
+                string errMsgData = @"File not found: " + databaseName + @".mdf";
+                session.Log(errMsgData);
+                throw new Exception(errMsgData);
+            }
+
+            if (!String.IsNullOrEmpty(logFileName))
+                sqlRestore.RelocateFiles.Add(new RelocateFile(logFileName, logFileLocation));
+            else
+            {
+                string errMsgLog = @"File not found: " + databaseName + @"_log.ldf";
+                session.Log(errMsgLog);
+                throw new Exception(errMsgLog);
+            }
+
+            if (!String.IsNullOrEmpty(partitionFileName))
+                sqlRestore.RelocateFiles.Add(new RelocateFile(partitionFileName, partitionFileLocation));
+
+            sqlRestore.ReplaceDatabase = true;
+
+            if (!Directory.Exists(dataFilePath))
+                Directory.CreateDirectory(dataFilePath);
+
+            // Make sure the service account (Network Service) has write permissions on folder where restored database files will reside.
+            // Convert the 'Network Service' SID: S-1-5-20 to a domain\name   
+            string account = new SecurityIdentifier(@"S-1-5-20").Translate(typeof(NTAccount)).ToString();
+            AddAccessRuleToDirectory(dataFilePath, account, FileSystemRights.FullControl, session);
+
+            // Make sure all users have write permissions on folder where restored database files will reside.
+            // Convert the 'Users' SID: S-1-5-32-545 to a domain\name
+            account = new SecurityIdentifier(@"S-1-5-32-545").Translate(typeof(NTAccount)).ToString();
+            AddAccessRuleToDirectory(dataFilePath, account, FileSystemRights.FullControl, session);
+
+            sqlRestore.SqlRestore(sqlServer);
+            //db = sqlServer.Databases[databaseName];
+            //db.SetOnline();
+            //sqlServer.Refresh();
+            }
+        }
+    }

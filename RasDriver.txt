@@ -1,0 +1,872 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using Iskraemeco.Core;
+using Iskraemeco.Core.Utils.Annotations;
+using Ras;
+using System.Threading;
+using System.Globalization;
+using System.Collections;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using Iskraemeco.Core.EventLog;
+using System.Text.RegularExpressions;
+using Iskraemeco.Core.Extensions;
+
+namespace Iskraemeco.MeterAccess.Connection
+{
+    class ModemShare
+    {
+        private string m_modemName;
+        public string ModemName
+        {
+            get
+            {
+                return m_modemName;
+            }
+        }
+
+        private string m_phoneNumber;
+        public string PhoneNumber
+        {
+            get
+            {
+                return m_phoneNumber;
+            }
+        }
+
+        [NotNull]
+        public RasConnection RasConnection { get; }
+
+        public ModemShare(string modemName, string phoneNumber, [NotNull] RasConnection rasConnection)
+        {
+            m_modemName = modemName;
+            m_phoneNumber = phoneNumber;
+            RasConnection = rasConnection;
+        }
+    }
+
+    class RasDriver : ConnectionDriver
+    {
+        private static TAPIProject.TAPI s_TAPIDevicePort = new TAPIProject.TAPI();
+
+        public const string RasDummyDevice = @"RAS dummy device ";
+
+        [NotNull]
+        private static readonly Object s_rasLockObject = new Object();
+        [NotNull]
+        private static readonly List<ModemShare> s_modemShare = new List<ModemShare>();
+        [NotNull]
+        private static readonly Dictionary<string, SystemDateTime> s_blackList = new Dictionary<string, SystemDateTime>();
+
+        private Hashtable m_properties;
+
+        private static bool s_concurrentModemAccess;
+        private static TimeSpan s_blackListInterval;
+
+        private static bool IsModemAvalible(string modem)
+        {
+            foreach (ModemShare ms in s_modemShare)
+            {
+                if (ms.ModemName.Equals(modem)) return false;
+            }
+
+            SystemDateTime blackListTime;
+
+            return modem == null || !s_blackList.TryGetValue(modem, out blackListTime) || blackListTime.TimeElapsed(s_blackListInterval);
+        }
+
+        [NotNull]
+        private static ModemShare CreateModemShare(
+            string phoneNumber,
+            string modem,
+            string userName,
+            string password,
+            bool pap,
+            ConnectionDevice connectionDevice,
+            string entryPath,
+            Hashtable customRasProperties,
+            bool ipv6,
+            SystemAction action)
+        {
+            string entryName = DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
+            string entryValue = ComposeEntry(entryName, modem, phoneNumber, customRasProperties, pap, ipv6);
+
+            var rasEntry = new RasEntry(entryPath, entryName, entryValue);
+
+            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationBeforeSetEntry);
+
+            rasEntry.SetEntry();
+
+            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationAfterSetEntry);
+
+            var rc = new RasConnection();
+            rc.PhoneNumber = phoneNumber;
+            rc.UserName = userName;
+            rc.Password = password;
+            rc.EntryName = rasEntry.EntryName;
+            rc.Entry = rasEntry;
+            rc.AddUser(connectionDevice);
+            rc.Phonebook = rasEntry.FullName;
+
+            var modemShare = new ModemShare(modem, phoneNumber, rc);
+            s_modemShare.Add(modemShare);
+
+            return modemShare;
+        }
+
+        private static string CheckCustomProperty(string line, Hashtable customRasProperties)
+        {
+            foreach (string s in customRasProperties.Keys)
+            {
+                String[] kv = Regex.Split(line, @"=");
+                if (kv[0].Equals(s))
+                {
+                    //DO NOT TRANSLATE "\r\n"
+                    string ret = s + @"=" + customRasProperties[s].ToString() + "\r\n";
+                    customRasProperties.Remove(s);
+                    return ret;
+                }
+            }
+            return line;
+        }
+        private static string ComposeEntry(string entryName, string modem, string phoneNumber, Hashtable customRasProperties, bool pap, bool ipv6)
+        {
+            System.OperatingSystem osInfo = System.Environment.OSVersion;
+            bool vista = false;
+            if (osInfo.Platform == PlatformID.Win32NT && osInfo.Version.Major == 6) vista = true;
+
+            //DO NOT TRANSLATE LITERAL STRINGS! 
+            //Parameter in method 'CheckCustomProperty' is literal string and should not be translated!
+            StringBuilder builder = new StringBuilder();
+            builder.Append(@"[" + entryName + @"]" + "\r\n");
+            builder.Append(CheckCustomProperty("Encoding=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Type=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("AutoLogon=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("UseRasCredentials=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("BaseProtocol=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("VpnStrategy=0\r\n", customRasProperties));
+
+            if (!vista)
+            {
+                // WIN 2003 Server
+                builder.Append(CheckCustomProperty("ExcludedProtocols=3\r\n", customRasProperties));
+            }
+            else
+            {   // WIN Vista
+                if (ipv6)
+                {
+                    builder.Append(CheckCustomProperty("ExcludedProtocols=6\r\n", customRasProperties));
+                }
+                else
+                {
+                    builder.Append(CheckCustomProperty("ExcludedProtocols=10\r\n", customRasProperties));
+                }
+            }
+            builder.Append(CheckCustomProperty("LcpExtensions=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("DataEncryption=8\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("SwCompression=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("NegotiateMultilinkAlways=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("SkipNwcWarning=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("SkipDownLevelDialog=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("SkipDoubleDialDialog=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("DialMode=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("DialPercent=75\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("DialSeconds=120\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("HangUpPercent=10\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("HangUpSeconds=120\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("OverridePref=15\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("RedialAttempts=3\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("RedialSeconds=60\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IdleDisconnectSeconds=1200\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("RedialOnLinkFailure=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CallbackMode=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CustomDialDll=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CustomDialFunc=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CustomRasDialDll=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("AuthenticateServer=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ShareMsFilePrint=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("BindMsNetClient=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("SharedPhoneNumbers=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("GlobalDeviceSettings=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PrerequisiteEntry=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PrerequisitePbk=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredBps=9600\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredHwFlow=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredProtocol=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredCompression=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredSpeaker=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreferredMdmProtocol=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreviewUserPw=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreviewDomain=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PreviewPhoneNumber=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ShowDialingProgress=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ShowMonitorIconInTaskBar=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CustomAuthKey=-1\r\n", customRasProperties));
+            if (pap)
+            {
+                if (vista)
+                {
+                    builder.Append(CheckCustomProperty("AuthRestrictions=8\r\n", customRasProperties));
+                }
+                else
+                {
+                    builder.Append(CheckCustomProperty("AuthRestrictions=264\r\n", customRasProperties));
+                }
+            }
+            else
+            {
+                if (vista)
+                {
+                    builder.Append(CheckCustomProperty("AuthRestrictions=632\r\n", customRasProperties));
+                }
+                else
+                {
+                    builder.Append(CheckCustomProperty("AuthRestrictions=632\r\n", customRasProperties));
+                }
+            }
+            builder.Append(CheckCustomProperty("TypicalAuth=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpPrioritizeRemote=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpHeaderCompression=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpAddress=0.0.0.0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpDnsAddress=0.0.0.0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpDns2Address=0.0.0.0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpWinsAddress=0.0.0.0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpWins2Address=0.0.0.0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpAssign=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpNameAssign=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpFrameSize=1006\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpDnsFlags=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpNBTFlags=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("TcpWindowSize=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("UseFlags=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpSecFlags=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("IpDnsSuffix=\r\n", customRasProperties));
+
+            builder.Append(CheckCustomProperty("NETCOMPONENTS=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ms_server=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ms_msclient=0\r\n", customRasProperties));
+
+            builder.Append(CheckCustomProperty("MEDIA=serial\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Port=" + s_TAPIDevicePort.GetPortNumber(modem) + "\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Device=" + modem + "\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("ConnectBPS=9600\r\n", customRasProperties));
+
+            builder.Append(CheckCustomProperty("DEVICE=modem\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PhoneNumber=" + phoneNumber + "\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("AreaCode=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CountryCode=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("CountryID=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("UseDialingRules=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Comment=\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("LastSelectedPhone=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("PromoteAlternates=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("TryNextAlternateOnFail=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("HwFlowControl=1\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Protocol=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Compression=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("Speaker=0\r\n", customRasProperties));
+            builder.Append(CheckCustomProperty("MdmProtocol=0\r\n", customRasProperties));
+
+            foreach (string s in customRasProperties.Keys)
+            {
+                builder.Append(s + "=" + customRasProperties[s].ToString() + "\r\n");
+            }
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Gets the ras connection.
+        /// </summary>
+        /// <param name="phoneNumber">The phone number.</param>
+        /// <param name="modem">The modem.</param>
+        /// <param name="userName">Name of the user.</param>
+        /// <param name="password">The password.</param>
+        /// <param name="pap">if set to <c>true</c> [pap].</param>
+        /// <param name="connectionDevice">The connection device.</param>
+        /// <param name="entryPath">The entry path.</param>
+        /// <param name="customRasProperties">The custom ras properties.</param>
+        /// <param name="ipv6">if set to <c>true</c> [ipv6].</param>
+        /// <param name="action">The action.</param>
+        /// <returns></returns>
+        /// <exception cref="Iskraemeco.Core.Sep2Exception">
+        /// </exception>
+        public static RasConnection GetRasConnection(
+            string phoneNumber,
+            string modem,
+            string userName,
+            string password,
+            bool pap,
+            ConnectionDevice connectionDevice,
+            string entryPath,
+            Hashtable customRasProperties,
+            bool ipv6,
+            SystemAction action)
+        {
+            ModemShare modemShare = null;
+
+            lock (s_rasLockObject)
+            {
+                try
+                {
+                    modemShare = s_modemShare.FirstOrDefault(value => value?.PhoneNumber == phoneNumber);
+
+                    if (modemShare == null)
+                    {
+                        SystemDateTime blackListTime;
+
+                        if (string.IsNullOrEmpty(modem) || modem.Contains(RasDummyDevice))
+                        {
+                            RasDeviceInfo[] devices = RasDeviceInfo.GetDevices();
+
+                            if (devices == null || devices.Length == 0) throw new Sep2Exception(Sep2WMsg.ConnectionErrorNoRasDevices);
+
+                            modem = devices.FirstOrDefault(value => value != null && IsModemAvalible(value.DeviceName))?.DeviceName;
+
+                            while (modem == null)
+                            {
+                                if (!Monitor.Wait(s_rasLockObject, s_blackListInterval)) throw new Sep2Exception(Sep2WMsg.ConnectionErrorNoRasDevices, $@"No free modem found in allowed time frame ({s_blackListInterval.ToIso8601String()})");
+
+                                modem = RasDeviceInfo.GetDevices()?.FirstOrDefault(value => value != null && IsModemAvalible(value.DeviceName))?.DeviceName;
+                            }
+                        }
+                        else if (s_blackList.TryGetValue(modem, out blackListTime))
+                        {
+                            while (true)
+                            {
+                                var now = SystemDateTime.Now;
+                                var blackListExpiryDate = blackListTime.AddTicks(s_blackListInterval.Ticks);
+                                if (blackListExpiryDate <= now)
+                                    break;
+
+                                var timeRemaining = (int)(Math.Abs(blackListExpiryDate - now) / SystemDateTime.OneMillisecond);
+                                
+                                Monitor.Wait(s_rasLockObject, timeRemaining);
+
+                                if (IsModemAvalible(modem))
+                                    break;
+
+                                Monitor.Pulse(s_rasLockObject);
+                            }
+                        }
+
+                        modemShare = CreateModemShare(phoneNumber, modem, userName, password, pap, connectionDevice, entryPath, customRasProperties, ipv6, action);
+                    }
+                    else
+                    {
+                        modemShare.RasConnection.AddUser(connectionDevice);
+                    }
+                }
+                finally
+                {
+                    if (modemShare == null)
+                        Monitor.Pulse(s_rasLockObject);
+                }
+            }
+
+            try
+            {
+                SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationBeforeDial);
+                modemShare.RasConnection.Dial(ipv6, s_concurrentModemAccess);
+                SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationAfterDial);
+            }
+            catch (Exception ex)
+            {
+                lock (s_rasLockObject)
+                {
+                    s_modemShare.Remove(modemShare);
+
+                    bool blackListed = ex.AsRasError() == RasError.ERROR_PORT_NOT_AVAILABLE;
+
+                    if (blackListed)
+                    {
+                        s_blackList[modem] = SystemDateTime.Now;
+                        SystemEventLog.ReportEvent(LogLevel.Warning, action, Sep2WMsg.ConnectionWarningDeviceBlackListed, $@"RAS:{modem}", s_blackListInterval, ex);
+                    }
+
+                    try
+                    {
+                        SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationBeforeDeleteEntry, ex);
+                        modemShare.RasConnection.Entry?.DeleteEntry();
+                        SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationAfterDeleteEntry, ex);
+                    }
+                    catch (Exception dex)
+                    {
+                        SystemEventLog.ReportEvent(LogLevel.Error, dex);
+                    }
+                        
+                    if (!blackListed)
+                        Monitor.Pulse(s_rasLockObject);
+                }
+                throw;
+            }
+            return modemShare.RasConnection;
+        }
+
+        public static void RemoveRasConnection(RasConnection rasConnection, ConnectionDevice connectionDevice, SystemAction action)
+        {
+            if (rasConnection == null) return;  // if physical connection fails, do nothing
+
+            Exception exception = null;
+
+            lock (s_rasLockObject)
+            {
+                try
+                {
+                    rasConnection.RemoveUser(connectionDevice);
+
+                    if (rasConnection.UserCount == 0)
+                    {
+                        try
+                        {
+                            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationBeforeHangup);
+                            rasConnection.HangUp(20, s_concurrentModemAccess);
+                            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationAfterHangup);
+                        }
+                        catch (Exception ex)
+                        {
+                            exception = ex;
+                            //SystemEventLog.ReportEvent(LogLevel.Error, action, ex);
+                        }
+
+                        try
+                        {
+                            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationBeforeDeleteEntry);
+                            rasConnection.Entry.DeleteEntry();
+                            SystemEventLog.ReportEvent(15, action, Sep2WMsg.ConnectionInformationRasNotificationAfterDeleteEntry);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (exception == null)
+                                exception = ex;
+
+                            //SystemEventLog.ReportEvent(LogLevel.Error, action, ex);
+                        }
+
+                        for (int i = 0; i < s_modemShare.Count; i++)
+                        {
+                            if (s_modemShare[i].RasConnection.Equals(rasConnection))
+                            {
+                                s_modemShare.Remove(s_modemShare[i]);
+                                break;
+                            }
+                        }
+
+                        rasConnection.Dispose();
+                    }
+                }
+                finally
+                {
+                    Monitor.Pulse(s_rasLockObject);
+                }
+            }
+
+            if (exception != null)
+                throw exception;
+        }
+
+        public override string[] GetDevices(Hashtable properties, bool fastDiscoverMode)
+        {
+            m_properties = properties;
+            s_concurrentModemAccess = properties.GetValueOrSetToDefault(@"ConcurrentModemAccess", false);
+            s_blackListInterval = TimeSpan.FromMilliseconds(properties.GetValueOrSetToDefault(@"BlackListInterval", 5 * 60 * 1000));
+
+            lock (s_rasLockObject)
+            {
+                List<string> ret = new List<string>();
+                for (int i = 0; i < 100; i++) ret.Add(RasDriver.RasDummyDevice + i);
+
+                RasDeviceInfo[] devices = null;
+                devices = RasDeviceInfo.GetDevices();
+                for (int i = 0; i < devices.Length; i++)
+                {
+                    ret.Add(devices[i].DeviceName);
+                }
+                return ret.ToArray();
+            }
+        }
+
+        protected override ConnectionDevice CreateDevice(SystemAction action, DeviceInfo deviceInfo, IDeviceManagement deviceManagement)
+        {
+            return new RasDevice(action, deviceInfo, m_properties);
+        }
+    }
+
+    class RasDevice : ConnectionDevice
+    {
+        #region Variables
+        private Socket m_socket;
+
+        private IPAddress m_serverIP;
+        private int m_serverPort;
+        private ProtocolType m_protocolType = ProtocolType.Tcp;
+        private int m_receiveTimeout = 1500;
+        private LingerOption m_lingerState;
+        private bool m_dontFragment;
+        private bool m_noDelay;
+        private bool m_p2cc;
+        private bool m_connected;
+        private byte[] PurgeBuffer = new byte[128];
+        private int m_ClientPort;
+        private string m_phoneNumber;
+        //Driver že podpira nastavitev Username/Password preko properties, zato bi default vrednosti samo zamenjal z string.Empty
+        private string m_userName = string.Empty;
+        private string m_password = string.Empty;
+        private bool m_pap;
+        private bool m_disconnected;
+        private string m_phoneBookPath = @"C:\Documents and Settings\All Users\Application Data\Microsoft\Network\Connections\Pbk\";
+        private RasConnection m_rasConnection;
+        private Hashtable m_customRasEntryProperties = new Hashtable();
+        private bool m_ipv6;
+        #endregion
+
+        #region Methods
+        public RasDevice(SystemAction action, [NotNull] DeviceInfo deviceInfo, Hashtable properties)
+            : base(action, deviceInfo, properties)
+        {
+        }
+
+        protected override void SendImpl(byte[] bytes)
+        {
+            try
+            {
+                m_socket.Send(bytes);
+                SystemDateTime start = SystemDateTime.Now;
+                while (!m_socket.Poll(100, SelectMode.SelectWrite)) 
+                {
+                    if (TimeSpan.FromTicks(SystemDateTime.Now.Ticks - start.Ticks).TotalMilliseconds > m_receiveTimeout) throw new Sep2Exception(Sep2WMsg.ConnectionErrorTimeout);
+                } // make sure data is sent before continuing
+            }
+            catch (SocketException sex)
+            {
+                if (sex.ErrorCode == 10050 ||   // network is down
+                    sex.ErrorCode == 10051 ||   // network is unreachable
+                    sex.ErrorCode == 10052 ||   // network dropped connection on reset
+                    sex.ErrorCode == 10053 ||   // software caused connection abort
+                    sex.ErrorCode == 10054      // connection reset by peer
+                    )
+                {
+                    m_connected = false;
+                }
+                throw;
+            }
+        }
+
+        protected override int ReceiveImpl(byte[] buffer, int offset, int count)
+        {
+            if (m_socket == null)
+                throw new Sep2Exception(Sep2WMsg.ConnectionErrorConnectFirst);
+            m_socket.Blocking = true;         // bug in .NET framework 2.0, blocking must be set to true before every read
+            try
+            {
+                int receive = m_socket.Receive(buffer, offset, count, SocketFlags.None);
+                if (receive == 0)
+                    throw new Sep2Exception(Sep2WMsg.ConnectionErrorTimeout);
+                return receive;
+            }
+            catch (TimeoutException exc)
+            {
+                throw new Sep2Exception(Sep2WMsg.ConnectionErrorTimeout, exc);
+            }
+            catch (SocketException sex)
+            {
+                if (sex.ErrorCode == 10060)
+                {
+                    //timed out
+                    throw new Sep2Exception(Sep2WMsg.ConnectionErrorTimeout, sex);
+                }
+                else if (sex.ErrorCode == 10050 ||   // network is down
+                    sex.ErrorCode == 10051 ||   // network is unreachable
+                    sex.ErrorCode == 10052 ||   // network dropped connection on reset
+                    sex.ErrorCode == 10053 ||   // software caused connection abort
+                    sex.ErrorCode == 10054   // connection reset by peer
+                    )
+                {
+                    m_connected = false;
+                }
+                throw new Sep2Exception(sex);
+            }
+        }
+
+        private void DisconnectSocket()
+        {
+            if (m_socket != null)
+            {
+                try
+                {
+                    m_socket.Shutdown(SocketShutdown.Both);
+                }
+                catch (ThreadAbortException) { throw; }
+                catch (Exception) { }
+
+                try
+                {
+                    m_socket.Close();
+                }
+                catch (ThreadAbortException) { throw; }
+                catch (Exception) { }
+            }
+            
+            m_connected = false;
+        }
+
+        protected override void DisconnectImpl()
+        {
+            try
+            {
+                DisconnectSocket();
+            }
+            catch
+            {
+                throw;
+            }
+            finally
+            {// todo
+                RasDriver.RemoveRasConnection(m_rasConnection, this, base.Action);
+            }
+            m_disconnected = true;
+        }
+
+        private void ConnectSocket(IPAddress serverIP, IPAddress clientIP)
+        {
+            SocketType socketType = SocketType.Stream;
+            if (m_protocolType == ProtocolType.Udp) socketType = SocketType.Dgram;
+
+            if (!m_ipv6) m_socket = new Socket(AddressFamily.InterNetwork, socketType, m_protocolType);
+            else m_socket = new Socket(AddressFamily.InterNetworkV6, socketType, m_protocolType);
+
+            m_socket.Blocking = true;
+            m_socket.ReceiveTimeout = m_receiveTimeout;
+            m_socket.SendTimeout = m_receiveTimeout;
+
+            if (m_p2cc)
+            {
+                m_socket.LingerState = new LingerOption(true, 0);
+                m_socket.DontFragment = true;
+                m_socket.NoDelay = true;
+            }
+
+            try
+            {
+                //RAS device, bind client side to apropriate interface
+                IPAddress usedIP = serverIP;
+                if (m_serverIP != null) usedIP = m_serverIP;
+
+                var clientEndPoint = new IPEndPoint(clientIP, 0);
+                var serverEndPoint = new IPEndPoint(usedIP, m_serverPort);
+
+                SystemEventLog.ReportEvent(LogLevel.ModuleEvent_VeryHigh, Action, Sep2WMsg.ConnectionInformationEstablishingNetworkConnection, clientEndPoint, serverEndPoint);
+
+                m_socket.Bind(clientEndPoint);
+                m_socket.Connect(serverEndPoint);
+                m_connected = true;
+
+                IPEndPoint endpoint = (IPEndPoint)m_socket.LocalEndPoint;
+                m_ClientPort = endpoint.Port;
+            }
+            catch (SocketException sex)
+            {
+                m_socket.Close();
+                m_socket = null;
+                SystemEventLog.ReportEvent(BaseTraceLevel + 2, base.Action, sex);
+                throw new Sep2Exception(Sep2WMsg.ConnectionErrorNotConnected);
+            }
+            catch (Exception e)
+            {
+                m_socket.Close();
+                m_socket = null;
+                SystemEventLog.ReportEvent(BaseTraceLevel + 2, base.Action, e);
+                throw new Sep2Exception(Sep2WMsg.ConnectionErrorNotConnected);
+            }
+        }
+
+        protected override void ConnectImpl(int port)
+        {
+            m_rasConnection = RasDriver.GetRasConnection(
+                m_phoneNumber,
+                DeviceName,
+                m_userName,
+                m_password,
+                m_pap,
+                this,
+                m_phoneBookPath,
+                m_customRasEntryProperties,
+                m_ipv6,
+                Action);
+
+            ConnectSocket(m_rasConnection.ServerIPAddress, m_rasConnection.ClientIPAddress);
+        }
+
+        protected override void SetPropertyImpl(string key, string keyValue)
+        {
+            switch (key.ToUpperInvariant())
+            {
+                case @"SERVERIP":
+                    m_serverIP = IPAddress.Parse(keyValue);
+                    return;
+                case @"SERVERPORT":
+                    m_serverPort = int.Parse(keyValue, CultureInfo.InvariantCulture);
+                    return;
+                case @"PROTOCOLTYPE":
+                    m_protocolType = (ProtocolType)Enum.Parse(typeof(ProtocolType), keyValue);
+                    return;
+                case @"TIMEOUT":
+					m_receiveTimeout = CorrectTimeOutSetting(key, keyValue);
+                    return;
+                case @"LINGER":
+                    m_lingerState = new LingerOption(!bool.Parse(keyValue), 0);
+                    return;
+                case @"DONTFRAGMENT":
+                    m_dontFragment = bool.Parse(keyValue);
+                    return;
+                case @"NODELAY":
+                    m_noDelay = bool.Parse(keyValue);
+                    return;
+                case @"P2CC":
+                    m_p2cc = bool.Parse(keyValue);
+                    return;
+                case @"PHONENUMBER":
+                    m_phoneNumber = keyValue;
+                    return;
+                case @"USERNAME":
+                    m_userName = keyValue;      //tukaj
+                    return;
+                case @"PASSWORD":
+                    m_password = keyValue;
+                    return;
+                case @"PAP":
+                    m_pap = bool.Parse(keyValue);
+                    return;
+                case @"PHONEBOOKPATH":
+                    m_phoneBookPath = keyValue;
+                    return;
+                case @"IPV6":
+                    m_ipv6 = bool.Parse(keyValue);
+                    return;
+            }
+            if (key.ToUpperInvariant().StartsWith(@"RAS", StringComparison.Ordinal))
+            {
+                m_customRasEntryProperties.Add(key.Substring(3, key.Length - 3), keyValue);
+            }
+        }
+
+        protected override string GetPropertyImpl(string key)
+        {
+            switch (key)
+            {
+                case @"ServerIP":
+                    return m_serverIP.ToString();
+                case @"ServerPort":
+                    return m_serverPort.ToString(CultureInfo.InvariantCulture);
+                case @"ProtocolType":
+                    return m_protocolType.ToString();
+                case @"TimeOut":
+                    return m_receiveTimeout.ToString(CultureInfo.InvariantCulture);
+                case @"Linger":
+                    return m_lingerState.Enabled.ToString(CultureInfo.InvariantCulture);
+                case @"DontFragment":
+                    return m_dontFragment.ToString(CultureInfo.InvariantCulture);
+                case @"NoDelay":
+                    return m_noDelay.ToString(CultureInfo.InvariantCulture);
+                case @"p2cc":
+                    return m_p2cc.ToString(CultureInfo.InvariantCulture);
+                case @"PhoneNumber":
+                    return m_phoneNumber;
+                case @"Username":
+                    return m_userName;   //tukaj
+                case @"Password":
+                    return m_password;
+                case @"PAP":
+                    return m_pap.ToString();
+                case @"IPv6":
+                    return m_ipv6.ToString(CultureInfo.InvariantCulture);
+            }
+            foreach (string ckey in m_customRasEntryProperties.Keys)
+            {
+                if (ckey.Equals(key)) return m_customRasEntryProperties[ckey].ToString();
+            }
+            return null;
+        }
+
+        protected override string[] GetPropertiesImpl()
+        {
+            string[] ret = new string[]{@"ServerIP", @"ServerPort", @"ClientIP", @"ProtocolType", @"TimeOut", @"Linger", @"DontFragment",
+                                        @"NoDelay", @"p2cc", @"PhoneNumber", @"Username", @"Password", @"Modem", @"PAP"};
+            return ret;
+        }
+
+        protected override void AbortImpl()
+        {
+            if (!m_disconnected) DisconnectImpl();
+        }
+
+        protected override void PurgeImpl()
+        {
+            int timeout = m_socket.ReceiveTimeout;
+            m_socket.ReceiveTimeout = 1;
+            try
+            {
+
+                while (m_socket.Available > 0) m_socket.Receive(PurgeBuffer);
+            }
+            catch (ThreadAbortException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                SystemEventLog.ReportEvent(BaseTraceLevel + 2, base.Action, e);
+            }
+            m_socket.ReceiveTimeout = timeout;
+        }
+
+        protected override bool GetDeviceStatusImpl(StatusType statusType)
+        {
+            if (statusType == StatusType.DeviceConnected) return m_connected;
+            else if (statusType == StatusType.DeviceAvalible) return true;
+            return true;
+        }
+
+        protected override bool ReconnectImpl()
+        {
+            int previousClientPort = m_ClientPort;
+
+            DisconnectSocket();
+
+            ConnectSocket(m_rasConnection.ServerIPAddress, m_rasConnection.ClientIPAddress);
+
+            if (m_ClientPort == previousClientPort)
+            {
+                // windows increments client port, so this should not happen
+                m_socket.Shutdown(SocketShutdown.Both);
+                m_socket.Close();
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Tells if driver enables remote communication.
+        /// </summary>
+        public override bool EnablesRemoteCommunication
+        {
+            get { return true; }
+        }
+
+        public override bool CanAbort
+        {
+            get { return true; }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                AbortImpl();
+
+            base.Dispose(disposing);
+        }
+
+        #endregion
+    }
+}

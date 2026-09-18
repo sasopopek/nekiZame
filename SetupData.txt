@@ -1,0 +1,640 @@
+using System;
+using System.IO;
+using Iskraemeco.Database;
+
+namespace Iskraemeco.MeterView.DatabaseManager
+{
+    public class SetupData
+    {
+        #region Fields
+
+        public const string Sep2MeterViewDbServerInstance = @".\SQLEEIEMeterView";
+        public const string Sep2MeterViewDbName = @"MeterView";
+        public const string SqlConnectionTimeout = @"300";
+
+        public const string Sep2MeterViewLocalDb2012ServerInstance = @"(LocalDB)\v11.0"; 
+        public const string Sep2MeterViewLocalDb2019ServerInstance = @"(LocalDB)\MSSQLLocalDB";
+        public const string Sep2MeterViewCurrentDbServerInstance = @"(LocalDB)\MSSQLLocalDB2019SmcInstance";
+        public const string Sep2MeterViewCurrentDbNameWithoutVersion = @"MeterConfigurator";
+        // Change this when upgrading !!!
+        public const string Sep2MeterViewCurrentInstallFolder = @"Symbiot MeterConfigurator 3.27";
+        public const string DefaultLogName = @"MC3.27";
+
+        private static string s_sep2MeterViewCurrentConnectionString;
+        private static string s_sep2MeterViewCurrentDbFilePath;
+        private static string s_commonApplicationDataFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationCommandScriptsFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationShipmentFilesFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationShipmentFilesGulfFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationShipmentFilesIskraemecoFolder;
+        private static string s_sep2MeterViewCurrentCommonApplicationDataFolder;
+        private static string s_sep2MeterViewCurrentDbName;
+        private static string s_sep2MeterViewCurrentDbVersion;
+
+        private static string s_sep2MeterView2013CommonApplicationDataFolder;
+        private static string s_sep2MeterView2014CommonApplicationDataFolder;
+        private static string s_sep2MeterView2014R2CommonApplicationDataFolder;
+        private static string s_sep2MeterView2014R3CommonApplicationDataFolder;
+        private static string s_sep2MeterView2015CommonApplicationDataFolder;
+        private static string s_sep2MeterView2015R2CommonApplicationDataFolder;
+        private static string s_sep2MeterView2016CommonApplicationDataFolder;
+        private static string s_sep2MeterView2017CommonApplicationDataFolder;
+        private static string s_sep2MeterView2017R2CommonApplicationDataFolder;
+        private static string s_sep2MeterView2018CommonApplicationDataFolder;
+        private static string s_sep2MeterView2019CommonApplicationDataFolder;
+        private static string s_sep2MeterView2019R2CommonApplicationDataFolder;
+        private static string s_sep2MeterView2020CommonApplicationDataFolder;
+        private static string s_sep2MeterView2020R2CommonApplicationDataFolder;
+        private static string s_sep2MeterView2020R3CommonApplicationDataFolder;
+        private static string s_sep2MeterView2021CommonApplicationDataFolder;
+        private static string s_symbiot3_0_CommonApplicationDataFolder;
+        private static string s_symbiot3_1_CommonApplicationDataFolder;
+        private static string s_symbiot3_4_CommonApplicationDataFolder;
+        private static string s_symbiot3_5_CommonApplicationDataFolder;
+        private static string s_symbiot3_9_CommonApplicationDataFolder;
+        private static string s_symbiot3_11_CommonApplicationDataFolder;
+        private static string s_symbiot3_12_CommonApplicationDataFolder;
+        private static string s_symbiot3_13_CommonApplicationDataFolder;
+        private static string s_symbiot3_16_CommonApplicationDataFolder;
+        private static string s_symbiot3_17_CommonApplicationDataFolder;
+        private static string s_symbiot3_18_CommonApplicationDataFolder;
+        private static string s_symbiot3_19_CommonApplicationDataFolder;
+        private static string s_symbiot3_20_CommonApplicationDataFolder;
+        private static string s_symbiot3_21_CommonApplicationDataFolder;
+        private static string s_symbiot3_22_CommonApplicationDataFolder;
+        private static string s_symbiot3_23_CommonApplicationDataFolder;
+        private static string s_symbiot3_24_CommonApplicationDataFolder;
+        private static string s_symbiot3_25_CommonApplicationDataFolder;
+        private static string s_symbiot3_26_CommonApplicationDataFolder;
+
+        #endregion
+
+        #region Properties
+
+        public static string Sep2MeterViewCurrentConnectionString
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentConnectionString))
+                    s_sep2MeterViewCurrentConnectionString = string.Format(
+                        @"Provider=SQLNCLI11.1;Integrated Security=SSPI;Connect Timeout={3};AttachDBFileName={0};Data Source={1};Initial Catalog={2}",
+                        Sep2MeterViewCurrentDbFilePath, Sep2MeterViewCurrentDbServerInstance, Sep2MeterViewCurrentDbName, SqlConnectionTimeout);
+
+                return s_sep2MeterViewCurrentConnectionString;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentDbFilePath
+        {
+            get
+            {
+                // Example Sep2MeterViewCurrentDbFilePath : "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2013\Data\MeterView_2_3_4_1.mdf"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentDbFilePath))
+                {
+                    s_sep2MeterViewCurrentDbFilePath = Path.Combine(Sep2MeterViewCurrentCommonApplicationDataFolder, string.Concat(Sep2MeterViewCurrentDbName, @".mdf"));
+                }
+                return s_sep2MeterViewCurrentDbFilePath;
+            }
+        }
+
+        private static string CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData"
+                if (string.IsNullOrEmpty(s_commonApplicationDataFolder))
+                    s_commonApplicationDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+
+                return s_commonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationFolder))
+                    s_sep2MeterViewCurrentCommonApplicationFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", Sep2MeterViewCurrentInstallFolder });
+
+                return s_sep2MeterViewCurrentCommonApplicationFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationCommandScriptsFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Command Scripts"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationCommandScriptsFolder))
+                    s_sep2MeterViewCurrentCommonApplicationCommandScriptsFolder = Path.Combine(new string[] { Sep2MeterViewCurrentCommonApplicationFolder, @"Command Scripts" });
+
+                return s_sep2MeterViewCurrentCommonApplicationCommandScriptsFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationShipmentFilesFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Shipment Files"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationShipmentFilesFolder))
+                    s_sep2MeterViewCurrentCommonApplicationShipmentFilesFolder = Path.Combine(new string[] { Sep2MeterViewCurrentCommonApplicationFolder, @"Shipment Files" });
+
+                return s_sep2MeterViewCurrentCommonApplicationShipmentFilesFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationShipmentFilesGulfFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Shipment Files\Gulf"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationShipmentFilesGulfFolder))
+                    s_sep2MeterViewCurrentCommonApplicationShipmentFilesGulfFolder = Path.Combine(new string[] { Sep2MeterViewCurrentCommonApplicationShipmentFilesFolder, @"Gulf" });
+
+                return s_sep2MeterViewCurrentCommonApplicationShipmentFilesGulfFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationShipmentFilesIskraemecoFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Shipment Files\Iskraemeco"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationShipmentFilesIskraemecoFolder))
+                    s_sep2MeterViewCurrentCommonApplicationShipmentFilesIskraemecoFolder = Path.Combine(new string[] { Sep2MeterViewCurrentCommonApplicationShipmentFilesFolder, @"Iskraemeco" });
+
+                return s_sep2MeterViewCurrentCommonApplicationShipmentFilesIskraemecoFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentCommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentCommonApplicationDataFolder))
+                    s_sep2MeterViewCurrentCommonApplicationDataFolder = Path.Combine(new string[] { Sep2MeterViewCurrentCommonApplicationFolder, @"Data" });
+
+                return s_sep2MeterViewCurrentCommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterViewCurrentDbName
+        {
+            get
+            {
+                // Example: "MeterConfigurator_2_3_4_2"
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentDbName))
+                    s_sep2MeterViewCurrentDbName = string.Format(@"MeterConfigurator_{0}", Sep2MeterViewCurrentDbVersion.Replace('.', '_'));
+
+                return s_sep2MeterViewCurrentDbName;
+            }
+        }
+
+        /// <summary>
+        /// Example: "2.3.4.2"
+        /// </summary>
+        public static string Sep2MeterViewCurrentDbVersion
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(s_sep2MeterViewCurrentDbVersion))
+                    ValidateSupportedDatabaseVersion();
+
+                return s_sep2MeterViewCurrentDbVersion;
+            }
+        }
+
+        public static string Sep2MeterView2013CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2013\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2013CommonApplicationDataFolder))
+                    s_sep2MeterView2013CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2013", @"Data" });
+
+                return s_sep2MeterView2013CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2014CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2014\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2014CommonApplicationDataFolder))
+                    s_sep2MeterView2014CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2014", @"Data" });
+
+                return s_sep2MeterView2014CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2014R2CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2014 R2\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2014R2CommonApplicationDataFolder))
+                    s_sep2MeterView2014R2CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2014 R2", @"Data" });
+
+                return s_sep2MeterView2014R2CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2014R3CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2014 R3\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2014R3CommonApplicationDataFolder))
+                    s_sep2MeterView2014R3CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2014 R3", @"Data" });
+
+                return s_sep2MeterView2014R3CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2015CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2015\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2015CommonApplicationDataFolder))
+                    s_sep2MeterView2015CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2015", @"Data" });
+
+                return s_sep2MeterView2015CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2015R2CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2015 R2\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2015R2CommonApplicationDataFolder))
+                    s_sep2MeterView2015R2CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2015 R2", @"Data" });
+
+                return s_sep2MeterView2015R2CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2016CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2016\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2016CommonApplicationDataFolder))
+                    s_sep2MeterView2016CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2016", @"Data" });
+
+                return s_sep2MeterView2016CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2017CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2017\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2017CommonApplicationDataFolder))
+                    s_sep2MeterView2017CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2017", @"Data" });
+
+                return s_sep2MeterView2017CommonApplicationDataFolder;
+            }
+        }
+        public static string Sep2MeterView2017R2CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2017 R2\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2017R2CommonApplicationDataFolder))
+                    s_sep2MeterView2017R2CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2017 R2", @"Data" });
+
+                return s_sep2MeterView2017R2CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2018CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2018\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2018CommonApplicationDataFolder))
+                    s_sep2MeterView2018CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2018", @"Data" });
+
+                return s_sep2MeterView2018CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2019CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2019\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2019CommonApplicationDataFolder))
+                    s_sep2MeterView2019CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2019", @"Data" });
+
+                return s_sep2MeterView2019CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2019R2CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2019 R2\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2019R2CommonApplicationDataFolder))
+                    s_sep2MeterView2019R2CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2019 R2", @"Data" });
+
+                return s_sep2MeterView2019R2CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2020CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2020\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2020CommonApplicationDataFolder))
+                    s_sep2MeterView2020CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2020", @"Data" });
+
+                return s_sep2MeterView2020CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2020R2CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2020 R2\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2020R2CommonApplicationDataFolder))
+                    s_sep2MeterView2020R2CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2020 R2", @"Data" });
+
+                return s_sep2MeterView2020R2CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2020R3CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2020 R3\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2020R3CommonApplicationDataFolder))
+                    s_sep2MeterView2020R3CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2020 R3", @"Data" });
+
+                return s_sep2MeterView2020R3CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Sep2MeterView2021CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\SEP2W System\SEP2 MeterView 2021\Data"
+                if (string.IsNullOrEmpty(s_sep2MeterView2021CommonApplicationDataFolder))
+                    s_sep2MeterView2021CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"SEP2W System", @"SEP2 MeterView 2021", @"Data" });
+
+                return s_sep2MeterView2021CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_0_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.0\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_0_CommonApplicationDataFolder))
+                    s_symbiot3_0_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.0", @"Data" });
+
+                return s_symbiot3_0_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_1_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.1\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_1_CommonApplicationDataFolder))
+                    s_symbiot3_1_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.1", @"Data" });
+
+                return s_symbiot3_1_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_4_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.4\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_4_CommonApplicationDataFolder))
+                    s_symbiot3_4_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.4", @"Data" });
+
+                return s_symbiot3_4_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_5_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.5\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_5_CommonApplicationDataFolder))
+                    s_symbiot3_5_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.5", @"Data" });
+
+                return s_symbiot3_5_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_9_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.9\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_9_CommonApplicationDataFolder))
+                    s_symbiot3_9_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.9", @"Data" });
+
+                return s_symbiot3_9_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_11_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.11\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_11_CommonApplicationDataFolder))
+                    s_symbiot3_11_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.11", @"Data" });
+
+                return s_symbiot3_11_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_12_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.12\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_12_CommonApplicationDataFolder))
+                    s_symbiot3_12_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.12", @"Data" });
+
+                return s_symbiot3_12_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_13_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.13\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_13_CommonApplicationDataFolder))
+                    s_symbiot3_13_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.13", @"Data" });
+
+                return s_symbiot3_13_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_16_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.16\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_16_CommonApplicationDataFolder))
+                    s_symbiot3_16_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.16", @"Data" });
+
+                return s_symbiot3_16_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_17_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.17\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_17_CommonApplicationDataFolder))
+                    s_symbiot3_17_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.17", @"Data" });
+
+                return s_symbiot3_17_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_18_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.18\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_18_CommonApplicationDataFolder))
+                    s_symbiot3_18_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.18", @"Data" });
+
+                return s_symbiot3_18_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_19_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.19\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_19_CommonApplicationDataFolder))
+                    s_symbiot3_19_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.19", @"Data" });
+
+                return s_symbiot3_19_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_20_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.20\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_20_CommonApplicationDataFolder))
+                    s_symbiot3_20_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.20", @"Data" });
+
+                return s_symbiot3_20_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_21_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.21\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_21_CommonApplicationDataFolder))
+                    s_symbiot3_21_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.21", @"Data" });
+
+                return s_symbiot3_21_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_22_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.22\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_22_CommonApplicationDataFolder))
+                    s_symbiot3_22_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.22", @"Data" });
+
+                return s_symbiot3_22_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_23_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.23\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_23_CommonApplicationDataFolder))
+                    s_symbiot3_23_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.23", @"Data" });
+
+                return s_symbiot3_23_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_24_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.24\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_24_CommonApplicationDataFolder))
+                    s_symbiot3_24_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.24", @"Data" });
+
+                return s_symbiot3_24_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_25_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.25\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_25_CommonApplicationDataFolder))
+                    s_symbiot3_25_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.25", @"Data" });
+
+                return s_symbiot3_25_CommonApplicationDataFolder;
+            }
+        }
+
+        public static string Symbiot3_26_CommonApplicationDataFolder
+        {
+            get
+            {
+                // Example folder: "C:\ProgramData\Iskraemeco\Symbiot MeterConfigurator\Symbiot MeterConfigurator 3.26\Data"
+                if (string.IsNullOrEmpty(s_symbiot3_26_CommonApplicationDataFolder))
+                    s_symbiot3_26_CommonApplicationDataFolder = Path.Combine(new string[] { CommonApplicationDataFolder, @"Iskraemeco", @"Symbiot MeterConfigurator", @"Symbiot MeterConfigurator 3.26", @"Data" });
+
+                return s_symbiot3_26_CommonApplicationDataFolder;
+            }
+        }
+        #endregion
+
+        #region Methods
+
+        public static void ValidateSupportedDatabaseVersion()
+        {
+            DalAccess.ValidateMeterViewSupportedDatabaseVersion(out s_sep2MeterViewCurrentDbVersion);
+        }
+
+        #endregion
+    }
+}

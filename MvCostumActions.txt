@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Iskraemeco.MeterView.DatabaseManager;
+using Iskraemeco.Core.EventLog;
+using Iskraemeco.Core;
+using Iskraemeco.Core.Config;
+using WixToolset.Dtf.WindowsInstaller;
+using Iskraemeco.Core.Utils;
+using Iskraemeco.MeterAccess;
+
+namespace Iskraemeco.MeterView.Setup
+{
+    public class MVCustomActions
+    {
+        static MVCustomActions()
+        {
+            BindingRedirector.Register();
+        }
+
+        /// <summary>
+        /// Creates database and imports data from database of application's previous version.
+        /// </summary>
+        /// <param name="session"></param>
+        /// <returns></returns>
+        [CustomAction]
+        public static ActionResult CreateDatabaseAndImportData(Session session)
+        {
+            // For debugging purposes
+            //MessageBox.Show("Please attach a debugger to rundll32.exe.", "Attach");
+            //System.Threading.Thread.Sleep(15000);
+            session.Log("Begin CustomAction CreateDatabaseAndImportData");
+   
+            string setupTempFolderPath = Path.GetDirectoryName((new Uri(Assembly.GetExecutingAssembly().CodeBase)).LocalPath);
+
+            try
+            {
+                string SNI_x86_dllFilePath = Path.Combine(setupTempFolderPath, "Microsoft.Data.SqlClient.SNI.x86.dll");
+                SessionDbUpgrade.GetFileFromBinaryTable(session, SNI_x86_dllFilePath, "SNI_x86_dll");
+                DbCreate.CreateAndUpgradeDatabaseAndImportData(new SessionDbUpgrade(session), setupTempFolderPath);
+            }
+            catch (Exception e)
+            {
+                Record rd = new Record(1);
+                rd.SetString(0, "[1]");
+                rd.SetString(1, string.Format("Failed to configure database.\r\nError message:\r\n{0}", e.Message));    //tukaj
+                session.Message(InstallMessage.Error, rd);
+
+                session.Log(e.ToString());   //tukaj 
+                return ActionResult.Failure;
+            }
+            finally
+            {
+                session.Log("Deleting files in setup temp folder.");
+                DeleteSetupTempFiles(setupTempFolderPath);
+            }
+
+            // Create Event log during setup, while we still have administrative rights (event log creation requires
+            // administrative rights). 
+            // After setup, application can run without administrative rights, which causes an exception if we want to create
+            // event log during the first run of the application. 
+            session.Log($"Creating Event log with default log name '{SetupData.DefaultLogName}' and default source name '{SetupData.Sep2MeterViewCurrentInstallFolder}'.");
+            try
+            {
+                SystemEventLog.Initialize(@"/EventLog", SetupData.DefaultLogName, SetupData.Sep2MeterViewCurrentInstallFolder);
+            }
+            catch (Sep2Exception e)
+            {
+                session.Log($"Error initializing Event log! Error message: {e.Message}");   //tukaj
+                return ActionResult.Failure;
+            }
+
+            session.Log("End CustomAction CreateDatabaseAndImportData");
+
+            return ActionResult.Success;
+        }
+
+        private static void DeleteSetupTempFiles(string setupTempFolderPath)
+        {
+            foreach (string file in Directory.GetFiles(setupTempFolderPath))
+            {
+                string extension = Path.GetExtension(file);
+                if (extension == ".bak" || extension == ".sql")
+                    File.Delete(file);
+            }
+        }
+
+        /// <summary>
+        /// Calls all implementations of IAfterSetup from all Assemblies from current folder.
+        /// </summary>
+        /// <param name="session"></param>
+        /// <returns></returns>
+        [CustomAction]
+        public static ActionResult ExecuteIAfterSetupMethods(Session session)
+        {
+            //For debugging purposes
+            //MessageBox.Show("Please attach a debugger to rundll32.exe.", "Attach");
+
+            session.Log("Begin CustomAction ExecuteIAfterSetupMethods");
+
+            try
+            {
+                string msiDirectoryName = Path.GetDirectoryName(session["OriginalDatabase"]);
+
+                List<Assembly> allAssemblies = new List<Assembly>();
+
+                foreach (string dll in Directory.GetFiles(msiDirectoryName, "*.dll"))
+                {
+                    try
+                    {
+                        allAssemblies.Add(Assembly.UnsafeLoadFrom(dll));
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                foreach (Assembly assembly in allAssemblies)
+                {
+                    try
+                    {
+                        foreach (Type type in assembly.GetTypes().Where(
+                        mytype =>
+                        {
+                            Type[] interfaces = mytype.GetInterfaces();
+
+                            foreach (Type type in interfaces)
+                            {
+                                if (type.Name == @"IAfterSetup")
+                                    return true;
+                            }
+                            return false;
+                        }))
+                        {
+                            MethodInfo methodInfo = type.GetMethod("ExecuteAfterSetupActions");
+
+                            if (methodInfo != null)
+                            {
+                                object classInstance = Activator.CreateInstance(type);
+                                methodInfo.Invoke(classInstance, null);
+                            }
+                        }
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Record rd = new Record(1);
+                rd.SetString(0, "[1]");
+                rd.SetString(1, string.Format("Failed to execute CustomAction ExecuteIAfterSetupMethods.\r\nError message:\r\n{0}", e.Message));    //tukaj
+                session.Message(InstallMessage.Error, rd);
+
+                session.Log(e.ToString());   //tukaj
+                return ActionResult.Failure;
+            }
+
+            session.Log("End CustomAction ExecuteIAfterSetupMethods");
+
+            return ActionResult.Success;
+        }
+     
+        [CustomAction]
+        public static ActionResult CreateSecurityLog(Session session)
+        {           
+            try
+            {                
+                string targetPath = session.CustomActionData["TargetPath"];              
+               
+                string productName = session.CustomActionData["ProductName"];
+                
+                session.Log("Begin CustomAction CreateSecurityLog");
+                ApplicationConfig.CreateSep2SecurityLog(CommonAppValuesProvider.GetSecurityEventLogSourceName(productName), targetPath);
+            }
+            catch (Exception e)
+            {
+                Record rd = new Record(1);
+                rd.SetString(0, "[1]");
+                rd.SetString(1, string.Format("Failed to execute CustomAction CreateSecurityLog.\r\nError message:\r\n{0}", e.Message));   //tukaj
+                session.Message(InstallMessage.Error, rd);
+
+                session.Log(e.ToString());   //tukaj
+                return ActionResult.Failure;
+
+            }
+            session.Log("End CustomAction CreateSecurityLog");
+            return ActionResult.Success;
+        }
+
+        [CustomAction]
+        public static ActionResult CreateDeviceDefinitionFolder(Session session)
+        {
+            session.Log("Begin CustomAction CreateDeviceDefinitionFolder");
+
+            try
+            {
+                string targetPath = session.CustomActionData["TargetPath"];
+                session.Log("TargetPath = " + targetPath);
+                string defaultDeviceDefinitionFolder = Path.Combine(targetPath, AccessService.DefaultDeviceDefinitionFolder);
+
+                if (!Directory.Exists(defaultDeviceDefinitionFolder))
+                {
+                    Directory.CreateDirectory(defaultDeviceDefinitionFolder);
+                    session.Log($"Created directory {AccessService.DefaultDeviceDefinitionFolder} in folder: {defaultDeviceDefinitionFolder}");
+                }
+                else
+                    session.Log($"Directory {AccessService.DefaultDeviceDefinitionFolder} already exists.");
+            }
+            catch (Exception e)
+            {
+                Record rd = new Record(1);
+                rd.SetString(0, "[1]");
+                rd.SetString(1, string.Format($"Failed to create {AccessService.DefaultDeviceDefinitionFolder} folder.\r\nError message:\r\n{0}", e.Message));    //tukaj
+                session.Message(InstallMessage.Error, rd);
+
+                session.Log(e.ToString());    //tukaj
+                return ActionResult.Failure;
+            }
+
+            session.Log("End CustomAction CreateDeviceDefinitionFolder");
+
+            return ActionResult.Success;
+        }
+    }
+}
